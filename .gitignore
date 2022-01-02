@@ -1,12 +1,6 @@
 venv/
 .env
 __pycache__
-example.py
-generators.py
-mainscritto.py
-mainscrittoVersione2.py
-nulla.py
-sql.txt
-text.txt
-new_oldjson.txt
-requirements_from_web.txt
+test_calculations.py
+docker-compose-dev.yml
+calculations.py
