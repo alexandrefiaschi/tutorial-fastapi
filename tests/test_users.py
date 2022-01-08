@@ -1,52 +1,12 @@
-from fastapi.testclient import TestClient
-import pytest 
 from app import schemas
-from app.main import app
-from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from jose import jwt
 from app.config import settings
-from app.database import get_db, Base
-
-
-
-# USE THIS HARDCODED VALUES OR put _test end of url and take from env
-# SQLALCHEMY_DATABASE_URL = 'posgresql://postgres:pass123@localhost:5432/fastapi_test'
-SQLALCHEMY_DATABASE_URL = f'postgresql://{settings.database_username}:{settings.database_password}@{settings.database_hostname}:{settings.database_port}/{settings.database_name}_test'
-
-
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
-
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-Base.metadata.create_all(bind=engine)
-
-def override_get_db():
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-app.dependency_overrides[get_db] = override_get_db
-
-
-@pytest.fixture
-def client():
-    # we drop before so we can keep the table and understand better the problem
-    Base.metadata.drop_all(bind=engine)
-    #run our code before we run our test
-    Base.metadata.create_all(bind=engine)
-    yield TestClient(app)
-    Base.metadata.drop_all(bind=engine)
-    #run our code after test finishes
-
-
+import pytest
 
 def test_root(client):
     response = client.get('/')
     message = response.json().get('Message')
-    print(message)
+    #print(message)
     assert message == "Ciao, sono Alexandre questa è la mia API"
     assert response.status_code == 200
 
@@ -54,7 +14,32 @@ def test_create_user(client):
     response = client.post('/users/', json={"email":"siren@gmail.com", "password": "123"})
     
     new_user = schemas.UserOut(**response.json()) # **  for unpacking dictionary
-    print(response.json())
+    #print(response.json())
 
     assert new_user.email == "siren@gmail.com"
     assert response.status_code == 201
+
+def test_login_user(client, test_user):
+    response = client.post('/login', data={"username": test_user['email'] , "password": test_user['password']})
+    #print(response.json())
+    login_res = schemas.Token(**response.json())
+    payload = jwt.decode(login_res.access_token, settings.secret_key, algorithms=[settings.algorithm])
+        # extract the id
+    id = payload.get("user_id")
+    assert id == test_user['id']
+    assert login_res.token_type == 'bearer'
+    assert response.status_code == 200
+
+@pytest.mark.parametrize("email, password, error_code",
+    [("wrong@gmail.com", "123", 403),
+    ("alex@gmail.com", "wrongpass", 403),
+    ("wrong@gmail.com", "wrongpass", 403),
+    (None, "123", 422), 
+    ("alex@gmail.com", None, 422)])
+def test_login_failed_user(client, test_user, email, password, error_code):
+    response = client.post('/login', data={"username": email , "password": password})
+    assert response.status_code == error_code
+    #assert response.json().get('detail') == 'Invalid credentials'
+    
+    #print(response.json())
+    
